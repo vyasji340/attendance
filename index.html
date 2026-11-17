@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Attendance</title>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#eef1f7;--card:#fff;--ink:#14213d;--mute:#66728a;--line:#dde3ee;--acc:#2d4cc8;--ok:#1f9d6b;--wa:#c27a0e;--bad:#c6403a;--pu:#7a4cc2}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1524;--card:#18203a;--ink:#e8ecf7;--mute:#96a2bd;--line:#2a3558;--acc:#7b94ff;--ok:#3fcf97;--wa:#e8a23a;--bad:#ef7770;--pu:#b394f0}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 Manrope,system-ui,sans-serif}
+header{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;padding:12px 18px;background:var(--card);border-bottom:1px solid var(--line)}
+h1{font-size:18px;font-weight:800;margin:0}h2,h3{margin:0 0 10px}
+#nav{display:flex;gap:6px;flex-wrap:wrap}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer;border:1px solid var(--line);background:var(--card);padding:7px 12px;border-radius:8px}
+button:hover{border-color:var(--acc)}
+:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+button.on,button.go{background:var(--acc);border-color:var(--acc);color:#fff}
+button.mini{padding:4px 9px;background:var(--acc);color:#fff;border-color:var(--acc);font-size:13px}
+button.red{color:var(--bad)}
+button:disabled{opacity:.35;cursor:not-allowed}
+main{max-width:1100px;margin:18px auto;padding:0 14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:14px}
+.narrow{max-width:380px;margin:0 auto 14px}
+label{display:block;font-size:13px;color:var(--mute);margin-bottom:10px}
+input,select{display:block;width:100%;margin-top:3px;border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:8px 10px}
+.bar{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px}
+.bar label{margin:0}.bar input,.bar select{width:auto}
+.wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse}
+th,td{text-align:left;padding:8px 7px;border-bottom:1px solid var(--line);white-space:nowrap}
+th{color:var(--mute);font-size:12px;font-weight:600}
+.mute{color:var(--mute)}.msg{color:var(--bad);min-height:20px;margin:6px 0 0}
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.chip{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:6px 12px;font-size:13px}.chip b{font-size:18px;display:block}
+.present{color:var(--ok)}.half_day{color:var(--wa)}.leave{color:var(--acc)}.absent{color:var(--bad)}.holiday{color:var(--pu)}.off,.pending{color:var(--mute)}
+.tag{font-weight:600}.late{color:var(--wa);font-size:12px;margin-left:6px}
+td.g{text-align:center;padding:6px 4px;font-weight:600;min-width:24px}
+.hero{text-align:center;padding:28px 0 22px}
+.clock{font-size:clamp(40px,12vw,84px);font-weight:800;letter-spacing:-.03em;font-variant-numeric:tabular-nums;line-height:1}
+.pgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:14px 0}
+.pb{padding:20px 10px;font-size:18px;font-weight:800;border-radius:12px;color:#fff;border:0}
+.pb small{display:block;font-weight:600;font-size:13px;opacity:.9;margin-top:2px}
+.pb.i{background:var(--ok)}.pb.l{background:var(--wa)}.pb.o{background:var(--acc)}
+.pb:disabled{background:var(--line);color:var(--mute);opacity:1}
+.pb.done{background:var(--card);color:var(--ink);border:1px solid var(--line);opacity:1}
+.big{width:100%;padding:11px;font-weight:800}
+dialog{border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--ink);width:min(460px,94vw)}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:0 10px}
+.days{display:flex;gap:10px;flex-wrap:wrap}.days label{display:flex;gap:4px;align-items:center;margin:0;color:var(--ink)}.days input{width:auto;margin:0}
+</style>
+</head>
+<body>
+<header><h1>Attendance</h1><nav id="nav"></nav></header>
+<main id="app"></main>
+<dialog id="dlg"></dialog>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script>
+// ====== Yaha apni Supabase details daalo ======
+const SUPABASE_URL = "https://dktqawpxwuwzmajflgsw.supabase.co/rest/v1/";
+const SUPABASE_KEY = "sb_publishable_Fw7mwA9ch-bh-eC52Vj3yA_W5HgxFau";
+// ==============================================
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const TZ = "Asia/Kolkata", $ = id => document.getElementById(id), app = $("app"), dlg = $("dlg");
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const today = () => new Date().toLocaleDateString("en-CA", {timeZone: TZ});
+const tm = t => t ? new Date(t).toLocaleTimeString("en-IN", {timeZone: TZ, hour: "2-digit", minute: "2-digit", hour12: true}) : "—";
+const t24 = t => t ? new Date(t).toLocaleTimeString("en-GB", {timeZone: TZ, hour: "2-digit", minute: "2-digit"}) : "";
+const toISO = (d, hm) => hm ? new Date(`${d}T${hm}:00+05:30`).toISOString() : null;
+const mins = s => { const [a, b] = s.split(":"); return +a * 60 + +b; };
+const hrs = r => { if (!r || !r.in_time || !r.out_time) return 0; let ms = new Date(r.out_time) - new Date(r.in_time); if (r.lunch_out && r.lunch_in) ms -= new Date(r.lunch_in) - new Date(r.lunch_out); return Math.max(ms, 0) / 36e5; };
+const hm = h => h ? Math.floor(h) + "h " + String(Math.round(h % 1 * 60)).padStart(2, "0") + "m" : "—";
+const inr = n => "₹" + Math.round(n).toLocaleString("en-IN");
+const LBL = {present:"Present", half_day:"Half day", leave:"Leave (paid)", absent:"Absent", holiday:"Holiday", off:"Weekly off", pending:"Abhi baaki", future:"", na:""};
+const SH = {present:"P", half_day:"½", leave:"L", absent:"A", holiday:"H", off:"W", pending:"·", future:"", na:""};
+const V = {present:1, half_day:.5, leave:1, absent:0, holiday:1};
+
+let tab = "punch", admin = false, date = today(), month = today().slice(0, 7), msg = "", pun = null, pubEmps = null, tmo, eid, csv = [];
+let emps = [], S = {shift_start:"10:00", grace_min:15, full_hours:8, half_hours:4, weekly_off:[0], ot_mult:0}, hol = {}, rows = {};
+const isLate = r => r && r.in_time && mins(t24(r.in_time)) > mins(S.shift_start) + S.grace_min;
+
+function dayInfo(e, day, r) {
+  if (day < e.joined_on) return {k:"na", v:0, skip:1};
+  if (r && r.status) return {k:r.status, v:V[r.status]};
+  if (r && r.in_time) {
+    if (!r.out_time) return {k:"present", v:1, open:1};
+    const h = hrs(r);
+    return h >= S.full_hours ? {k:"present", v:1} : h >= S.half_hours ? {k:"half_day", v:.5} : {k:"absent", v:0};
+  }
+  if (hol[day]) return {k:"holiday", v:1};
+  if (S.weekly_off.includes(new Date(day + "T00:00:00Z").getUTCDay())) return {k:"off", v:1};
+  if (day === today()) return {k:"pending", v:0, skip:1};
+  if (day > today()) return {k:"future", v:0, skip:1};
+  return {k:"absent", v:0};
+}
+
+async function base() {
+  const [e, s, h] = await Promise.all([sb.from("employees").select("*").order("name"), sb.from("settings").select("*").single(), sb.from("holidays").select("*").order("day")]);
+  emps = e.data || []; if (s.data) S = s.data;
+  hol = {}; (h.data || []).forEach(x => hol[x.day] = x.name);
+  return h.data || [];
+}
+
+const A = {}, C = {};
+app.onclick = dlg.onclick = e => { const b = e.target.closest("[data-a]"); if (b && A[b.dataset.a]) A[b.dataset.a](b); };
+app.onchange = e => { const b = e.target.closest("[data-c]"); if (b && C[b.dataset.c]) C[b.dataset.c](b); };
+
+function nav() {
+  const t = (k, l) => `<button data-t="${k}" class="${tab === k ? "on" : ""}">${l}</button>`;
+  $("nav").innerHTML = (admin ? t("att", "Attendance") + t("month", "Mahina & Salary") + t("staff", "Staff") + t("set", "Settings") : "") +
+    t("punch", "Attendance lagao") + (admin ? `<button id="lo">Logout</button>` : t("att", "Admin"));
+}
+$("nav").onclick = async e => {
+  const b = e.target.closest("button"); if (!b) return;
+  if (b.id === "lo") { await sb.auth.signOut(); admin = false; tab = "punch"; }
+  else { tab = b.dataset.t; if (tab === "punch") { pubEmps = null; } }
+  msg = ""; render();
+};
+async function render() {
+  nav();
+  if (tab === "punch") return tPunch();
+  if (!admin) return tLogin();
+  return ({att:tAtt, month:tMonth, staff:tStaff, set:tSet})[tab]();
+}
+
+/* ---------- Employee punch screen ---------- */
+setInterval(() => { const c = $("clk"); if (!c) return; const n = new Date();
+  c.textContent = n.toLocaleTimeString("en-IN", {timeZone: TZ, hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: true});
+  $("dt").textContent = n.toLocaleDateString("en-IN", {timeZone: TZ, weekday: "long", day: "numeric", month: "long"}); }, 1000);
+
+async function tPunch() {
+  if (!pubEmps) pubEmps = (await sb.rpc("public_employees")).data || [];
+  const hero = `<section class="hero"><div id="clk" class="clock">&nbsp;</div><div id="dt" class="mute"></div></section>`;
+  clearTimeout(tmo);
+  if (!pun) {
+    app.innerHTML = hero + `<div class="card narrow">${pubEmps.length ? `
+      <label>Apna naam<select id="pe">${pubEmps.map(e => `<option value="${e.id}">${esc(e.name)}</option>`).join("")}</select></label>
+      <label>PIN<input id="pp" type="password" inputmode="numeric" maxlength="6" autocomplete="off"></label>
+      <button class="big go" data-a="plogin">Aage badho</button>` : `<p class="mute">Abhi koi employee add nahi hua.</p>`}
+      <p class="msg">${esc(msg)}</p></div>`;
+  } else {
+    const r = pun.data.att || {}, st = r.status;
+    const bt = (f, l, cls, ok) => r[f] ? `<button class="pb done" disabled>${l}<small>${tm(r[f])}</small></button>` : `<button class="pb ${cls}" data-a="punch" data-f="${f}" ${ok && !st || (st === "present" || st === "half_day") && ok ? "" : "disabled"}>${l}</button>`;
+    const inside = r.in_time && !r.out_time;
+    app.innerHTML = hero + `<div class="card narrow"><h3>Namaste, ${esc(pun.data.name)}</h3>
+      ${st && !["present", "half_day"].includes(st) ? `<p class="mute">Aaj ka status: <b>${LBL[st]}</b></p>` : ""}
+      <div class="pgrid">${bt("in_time", "IN", "i", !r.in_time) + bt("lunch_out", "Lunch OUT", "l", inside && !r.lunch_out) +
+        bt("lunch_in", "Lunch IN", "l", inside && r.lunch_out && !r.lunch_in) + bt("out_time", "OUT", "o", inside && !(r.lunch_out && !r.lunch_in))}</div>
+      ${isLate(r) ? `<p class="late">Late aaye (shift ${S.shift_start.slice(0, 5)})</p>` : ""}
+      ${r.out_time ? `<p>Aaj ke ghante: <b>${hm(hrs(r))}</b></p>` : ""}
+      <p class="msg">${esc(msg)}</p><button class="big" data-a="pexit">Done / Doosra employee</button></div>`;
+    tmo = setTimeout(() => { pun = null; render(); }, 60000);
+  }
+}
+A.plogin = async () => {
+  const id = $("pe").value, pin = $("pp").value;
+  const { data, error } = await sb.rpc("punch", {p_emp: id, p_pin: pin, p_action: "status"});
+  if (error || data.error) msg = (error && error.message) || data.error; else { msg = ""; pun = {id, pin, data}; }
+  render();
+};
+A.punch = async b => {
+  const f = {in_time:"in", lunch_out:"lunch_out", lunch_in:"lunch_in", out_time:"out"}[b.dataset.f];
+  const { data, error } = await sb.rpc("punch", {p_emp: pun.id, p_pin: pun.pin, p_action: f});
+  if (error || data.error) msg = (error && error.message) || data.error; else { pun.data = data; msg = ""; }
+  render();
+};
+A.pexit = () => { pun = null; msg = ""; render(); };
+
+/* ---------- Admin login ---------- */
+async function tLogin() {
+  const { data: { session } } = await sb.auth.getSession();
+  if (session && (await sb.rpc("is_admin")).data === true) { admin = true; tab = "att"; return render(); }
+  app.innerHTML = `<div class="card narrow"><h2>Admin login</h2>
+    <label>Email<input id="em" type="email" autocomplete="username"></label>
+    <label>Password<input id="pw" type="password" autocomplete="current-password"></label>
+    <button class="big go" data-a="login">Login</button><p class="msg">${esc(msg)}</p></div>`;
+}
+A.login = async () => {
+  const { error } = await sb.auth.signInWithPassword({email: $("em").value.trim(), password: $("pw").value});
+  if (error) { msg = "Login nahi hua: " + error.message; return render(); }
+  if ((await sb.rpc("is_admin")).data !== true) { await sb.auth.signOut(); msg = "Ye account admin nahi hai."; return render(); }
+  admin = true; tab = "att"; msg = ""; render();
+};
+
+/* ---------- Attendance (day) ---------- */
+async function tAtt() {
+  await base();
+  const a = await sb.from("attendance").select("*").eq("day", date); rows = {}; (a.data || []).forEach(r => rows[r.employee_id] = r);
+  const cnt = {present:0, half_day:0, leave:0, absent:0, pending:0, late:0, inside:0}, list = emps.filter(e => e.active);
+  const cell = (e, r, f, l) => {
+    if (r && r[f]) return tm(r[f]);
+    if (date !== today() || (r && r.status && !["present", "half_day"].includes(r.status))) return "—";
+    const ok = f === "in_time" ? !(r && r.in_time) : f === "lunch_in" ? r && r.lunch_out && !r.out_time : f === "lunch_out" ? r && r.in_time && !r.out_time : r && r.in_time && !r.out_time;
+    return `<button class="mini" data-a="mark" data-e="${e.id}" data-f="${f}" ${ok ? "" : "disabled"}>${l}</button>`;
+  };
+  const trs = list.map(e => {
+    const r = rows[e.id], i = dayInfo(e, date, r);
+    if (cnt[i.k] !== undefined) cnt[i.k]++;
+    if (isLate(r)) cnt.late++;
+    if (r && r.in_time && !r.out_time && !(r.lunch_out && !r.lunch_in)) cnt.inside++;
+    return `<tr><td>${esc(e.name)}</td><td class="tag ${i.k}">${LBL[i.k]}${i.open && date !== today() ? " (OUT nahi)" : ""}${isLate(r) ? `<span class="late">Late</span>` : ""}</td>
+      <td>${cell(e, r, "in_time", "IN")}</td><td>${cell(e, r, "lunch_out", "Lunch OUT")}</td><td>${cell(e, r, "lunch_in", "Lunch IN")}</td><td>${cell(e, r, "out_time", "OUT")}</td>
+      <td>${hm(hrs(r))}</td><td class="mute">${esc(r && r.note || "")}</td><td><button data-a="edit" data-e="${e.id}">Edit</button></td></tr>`;
+  }).join("");
+  const chip = (l, n) => `<div class="chip">${l}<b>${n}</b></div>`;
+  app.innerHTML = `<div class="card"><div class="bar"><label>Date<input type="date" id="d" data-c="date" value="${date}"></label></div>
+    <div class="chips">${chip("Present", cnt.present)}${chip("Half day", cnt.half_day)}${chip("Leave", cnt.leave)}${chip("Absent", cnt.absent)}${chip("Late", cnt.late)}${chip("Abhi andar", cnt.inside)}${date === today() ? chip("Abhi baaki", cnt.pending) : ""}</div>
+    ${list.length ? `<div class="wrap"><table><thead><tr><th>Naam</th><th>Status</th><th>IN</th><th>Lunch OUT</th><th>Lunch IN</th><th>OUT</th><th>Ghante</th><th>Note</th><th></th></tr></thead><tbody>${trs}</tbody></table></div>` : `<p class="mute">Staff tab me employee add karo.</p>`}
+    <p class="msg">${esc(msg)}</p></div>`;
+}
+C.date = b => { date = b.value || today(); tAtt(); };
+A.mark = async b => {
+  const { error } = await sb.from("attendance").upsert({employee_id: b.dataset.e, day: date, [b.dataset.f]: new Date().toISOString()}, {onConflict: "employee_id,day"});
+  msg = error ? error.message : ""; tAtt();
+};
+A.edit = b => {
+  const e = emps.find(x => x.id === b.dataset.e), r = rows[e.id] || {}; eid = e.id;
+  const ti = (id, l, f) => `<label>${l}<input type="time" id="${id}" value="${t24(r[f])}"></label>`;
+  dlg.innerHTML = `<h3>${esc(e.name)} · ${date}</h3>
+    <label>Status<select id="es"><option value="">Auto (time se)</option>${Object.keys(V).map(k => `<option value="${k}" ${r.status === k ? "selected" : ""}>${LBL[k]}</option>`).join("")}</select></label>
+    <div class="g2">${ti("e1", "IN", "in_time")}${ti("e4", "OUT", "out_time")}${ti("e2", "Lunch OUT", "lunch_out")}${ti("e3", "Lunch IN", "lunch_in")}</div>
+    <label>Note<input id="en" value="${esc(r.note || "")}"></label>
+    <div class="bar"><button class="go" data-a="dsave">Save</button><button data-a="dclose">Band karo</button></div>`;
+  dlg.showModal();
+};
+A.dclose = () => dlg.close();
+A.dsave = async () => {
+  const g = id => $(id).value;
+  const row = {employee_id: eid, day: date, status: g("es") || null, in_time: toISO(date, g("e1")), lunch_out: toISO(date, g("e2")), lunch_in: toISO(date, g("e3")), out_time: toISO(date, g("e4")), note: g("en") || null};
+  const empty = !row.status && !row.in_time && !row.lunch_out && !row.lunch_in && !row.out_time && !row.note;
+  const { error } = empty ? await sb.from("attendance").delete().eq("employee_id", eid).eq("day", date) : await sb.from("attendance").upsert(row, {onConflict: "employee_id,day"});
+  msg = error ? error.message : ""; dlg.close(); tAtt();
+};
+
+/* ---------- Month report + salary ---------- */
+async function tMonth() {
+  await base();
+  const [y, m] = month.split("-").map(Number), dim = new Date(y, m, 0).getDate(), p = n => String(n).padStart(2, "0");
+  const [a, adj] = await Promise.all([sb.from("attendance").select("*").gte("day", `${month}-01`).lte("day", `${month}-${p(dim)}`), sb.from("adjustments").select("*").eq("month", month)]);
+  const by = {}, aj = {}; (a.data || []).forEach(r => by[r.employee_id + r.day] = r); (adj.data || []).forEach(x => aj[x.employee_id] = x);
+  let head = "", grid = "", sal = "", tot = 0; csv = [["Naam", "Present", "Half day", "Leave", "Absent", "Late", "Payable din", "Gross", "Overtime", "Bonus", "Deduction", "Net"]];
+  for (let d = 1; d <= dim; d++) head += `<th style="text-align:center;padding:8px 4px">${d}</th>`;
+  emps.filter(e => e.active).forEach(e => {
+    let cells = "", paid = 0, ot = 0, late = 0; const c = {present:0, half_day:0, leave:0, absent:0};
+    for (let d = 1; d <= dim; d++) {
+      const day = `${month}-${p(d)}`, r = by[e.id + day], i = dayInfo(e, day, r);
+      cells += `<td class="g ${i.k}" title="${LBL[i.k]}">${SH[i.k]}</td>`;
+      if (!i.skip) paid += i.v;
+      if (c[i.k] !== undefined) c[i.k]++;
+      if (isLate(r)) late++;
+      if (r && r.out_time && S.ot_mult > 0) ot += Math.max(hrs(r) - S.full_hours, 0);
+    }
+    const perDay = e.monthly_salary / dim, gross = Math.round(perDay * paid), otPay = Math.round(ot * (perDay / S.full_hours) * S.ot_mult);
+    const x = aj[e.id] || {}, net = gross + otPay + (+x.bonus || 0) - (+x.deduction || 0); tot += net;
+    grid += `<tr><td>${esc(e.name)}</td>${cells}</tr>`;
+    sal += `<tr data-e="${e.id}"><td>${esc(e.name)}</td><td>${c.present}</td><td>${c.half_day}</td><td>${c.leave}</td><td>${c.absent}</td><td>${late}</td><td>${paid}</td><td>${inr(gross)}</td><td>${S.ot_mult > 0 ? inr(otPay) + ` <span class="mute">(${hm(ot)})</span>` : "—"}</td>
+      <td><input type="number" min="0" data-c="adj" data-k="bonus" value="${+x.bonus || 0}" style="width:90px"></td><td><input type="number" min="0" data-c="adj" data-k="deduction" value="${+x.deduction || 0}" style="width:90px"></td><td><b>${inr(net)}</b></td></tr>`;
+    csv.push([e.name, c.present, c.half_day, c.leave, c.absent, late, paid, gross, otPay, +x.bonus || 0, +x.deduction || 0, net]);
+  });
+  app.innerHTML = `<div class="card"><div class="bar"><label>Mahina<input type="month" data-c="month" value="${month}"></label><button data-a="csv">CSV download</button></div>
+    <div class="wrap"><table><thead><tr><th>Naam</th>${head}</tr></thead><tbody>${grid}</tbody></table></div>
+    <p class="mute">P Present · ½ Half day · L Leave · A Absent · H Holiday · W Weekly off</p></div>
+    <div class="card"><h3>Salary</h3><div class="wrap"><table><thead><tr><th>Naam</th><th>P</th><th>½</th><th>L</th><th>A</th><th>Late</th><th>Payable din</th><th>Gross</th><th>Overtime</th><th>Bonus (₹)</th><th>Advance/Katauti (₹)</th><th>Net</th></tr></thead><tbody>${sal}</tbody></table></div>
+    <p>Total payable: <b>${inr(tot)}</b></p><p class="mute">Gross = monthly salary ÷ ${dim} × payable din. Aaj tak ke din hi gine jaate hain, aur joining se pehle ke din nahi.</p></div>`;
+}
+C.month = b => { month = b.value || month; tMonth(); };
+C.adj = async b => {
+  const tr = b.closest("tr"), q = k => +tr.querySelector(`[data-k=${k}]`).value || 0;
+  await sb.from("adjustments").upsert({employee_id: tr.dataset.e, month, bonus: q("bonus"), deduction: q("deduction")});
+  tMonth();
+};
+A.csv = () => {
+  const t = csv.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
+  const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob(["\ufeff" + t], {type: "text/csv"})); a.download = `salary-${month}.csv`; a.click();
+};
+
+/* ---------- Staff ---------- */
+async function tStaff() {
+  await base();
+  app.innerHTML = `<div class="card"><h3>Naya employee</h3><div class="bar">
+    <label>Naam<input id="nn"></label><label>Monthly salary (₹)<input id="ns" type="number" min="0"></label>
+    <label>PIN (4-6 number)<input id="np" inputmode="numeric" maxlength="6"></label><label>Joining date<input id="nj" type="date" value="${today()}"></label>
+    <button class="go" data-a="addEmp">Add</button></div><p class="msg">${esc(msg)}</p></div>
+    <div class="card"><div class="wrap"><table><thead><tr><th>Naam</th><th>Monthly salary (₹)</th><th>Joining</th><th>Active</th><th></th></tr></thead><tbody>
+    ${emps.map(e => `<tr data-e="${e.id}"><td>${esc(e.name)}</td><td><input type="number" min="0" data-c="sal" value="${e.monthly_salary}" style="width:120px"></td><td>${e.joined_on}</td>
+    <td><input type="checkbox" data-c="act" ${e.active ? "checked" : ""} style="width:auto"></td>
+    <td><button data-a="pin" data-e="${e.id}">PIN badlo</button> <button class="red" data-a="del" data-e="${e.id}">Delete</button></td></tr>`).join("") || `<tr><td class="mute">Abhi koi employee nahi.</td></tr>`}</tbody></table></div></div>`;
+}
+A.addEmp = async () => {
+  const name = $("nn").value.trim(), pin = $("np").value.trim();
+  if (!name) { msg = "Naam likho."; return tStaff(); }
+  if (!/^\d{4,6}$/.test(pin)) { msg = "PIN 4 se 6 number ka hona chahiye."; return tStaff(); }
+  const { data, error } = await sb.from("employees").insert({name, monthly_salary: +$("ns").value || 0, joined_on: $("nj").value || today()}).select().single();
+  if (error) { msg = error.message; return tStaff(); }
+  const r = await sb.rpc("admin_set_pin", {p_emp: data.id, p_pin: pin});
+  msg = r.error ? r.error.message : ""; tStaff();
+};
+A.pin = async b => {
+  const pin = prompt("Naya PIN (4-6 number):"); if (!pin) return;
+  const r = await sb.rpc("admin_set_pin", {p_emp: b.dataset.e, p_pin: pin.trim()});
+  msg = r.error ? r.error.message : ""; tStaff();
+};
+A.del = async b => { if (!confirm("Employee aur uska poora attendance record delete ho jayega. Pakka?")) return; await sb.from("employees").delete().eq("id", b.dataset.e); tStaff(); };
+C.sal = async b => { await sb.from("employees").update({monthly_salary: +b.value || 0}).eq("id", b.closest("tr").dataset.e); };
+C.act = async b => { await sb.from("employees").update({active: b.checked}).eq("id", b.closest("tr").dataset.e); };
+
+/* ---------- Settings + holidays ---------- */
+async function tSet() {
+  const hl = await base(), dn = ["Ravi", "Som", "Mangal", "Budh", "Guru", "Shukra", "Shani"];
+  app.innerHTML = `<div class="card"><h3>Rules</h3><div class="bar">
+    <label>Shift start<input id="s1" type="time" value="${S.shift_start.slice(0, 5)}"></label><label>Late grace (min)<input id="s2" type="number" min="0" value="${S.grace_min}"></label>
+    <label>Full day ghante<input id="s3" type="number" step="0.5" value="${S.full_hours}"></label><label>Half day ghante<input id="s4" type="number" step="0.5" value="${S.half_hours}"></label>
+    <label>Overtime rate (0 = band)<input id="s5" type="number" step="0.25" min="0" value="${S.ot_mult}"></label></div>
+    <label>Weekly off</label><div class="days">${dn.map((n, i) => `<label><input type="checkbox" name="wo" value="${i}" ${S.weekly_off.includes(i) ? "checked" : ""}>${n}</label>`).join("")}</div>
+    <p class="mute">Time se auto status: Full day ghante ya zyada = Present, Half day ghante se zyada = Half day, usse kam = Absent (lunch ka time hata kar). Admin kabhi bhi Edit se badal sakta hai.</p>
+    <button class="go" data-a="saveS">Save rules</button> <span class="msg">${esc(msg)}</span></div>
+    <div class="card"><h3>Holidays</h3><div class="bar"><label>Date<input id="hd" type="date"></label><label>Naam<input id="hn" placeholder="Diwali"></label><button class="go" data-a="addH">Add</button></div>
+    ${hl.map(h => `<div style="padding:5px 0">${h.day} · ${esc(h.name)} <button class="red" data-a="delH" data-d="${h.day}">Hatao</button></div>`).join("") || `<p class="mute">Koi holiday nahi.</p>`}</div>`;
+}
+A.saveS = async () => {
+  const wo = [...document.querySelectorAll("[name=wo]:checked")].map(x => +x.value);
+  const { error } = await sb.from("settings").update({shift_start: $("s1").value || "10:00", grace_min: +$("s2").value || 0, full_hours: +$("s3").value || 8, half_hours: +$("s4").value || 4, ot_mult: +$("s5").value || 0, weekly_off: wo}).eq("id", 1);
+  msg = error ? error.message : "Save ho gaya"; tSet();
+};
+A.addH = async () => { if (!$("hd").value) return; await sb.from("holidays").upsert({day: $("hd").value, name: $("hn").value.trim() || "Holiday"}); tSet(); };
+A.delH = async b => { await sb.from("holidays").delete().eq("day", b.dataset.d); tSet(); };
+
+render();
+</script>
+</body>
+</html>
