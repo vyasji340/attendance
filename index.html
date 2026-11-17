@@ -63,7 +63,9 @@ dialog{border:1px solid var(--line);border-radius:12px;background:var(--card);co
 const SUPABASE_URL = "https://dktqawpxwuwzmajflgsw.supabase.co";
 const SUPABASE_KEY = "sb_publishable_Fw7mwA9ch-bh-eC52Vj3yA_W5HgxFau";
 // ==============================================
-const sb = supabase.createClient(new URL(SUPABASE_URL.trim()).origin, SUPABASE_KEY.trim());
+let HOST = "";
+try { HOST = new URL(SUPABASE_URL.trim()).origin; } catch (e) {}
+const sb = supabase.createClient(HOST || "https://invalid.supabase.co", SUPABASE_KEY.trim());
 const TZ = "Asia/Kolkata", $ = id => document.getElementById(id), app = $("app"), dlg = $("dlg");
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const today = () => new Date().toLocaleDateString("en-CA", {timeZone: TZ});
@@ -180,7 +182,7 @@ async function tLogin() {
 }
 A.login = async () => {
   const { error } = await sb.auth.signInWithPassword({email: $("em").value.trim(), password: $("pw").value});
-  if (error) { msg = "Login nahi hua: " + error.message; return render(); }
+  if (error) { msg = "Login nahi hua: " + error.message + " [server: " + (HOST || "URL galat hai") + "]"; return render(); }
   if ((await sb.rpc("is_admin")).data !== true) { await sb.auth.signOut(); msg = "Ye account admin nahi hai."; return render(); }
   admin = true; tab = "att"; msg = ""; render();
 };
