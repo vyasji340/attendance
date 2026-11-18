@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="hi">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Attendance</title>
+<title>Chittor Darpan · Attendance</title>
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;800&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#eef1f7;--card:#fff;--ink:#14213d;--mute:#66728a;--line:#dde3ee;--acc:#2d4cc8;--ok:#1f9d6b;--wa:#c27a0e;--bad:#c6403a;--pu:#7a4cc2}
@@ -21,7 +21,14 @@ button.on,button.go{background:var(--acc);border-color:var(--acc);color:#fff}
 button.mini{padding:4px 9px;background:var(--acc);color:#fff;border-color:var(--acc);font-size:13px}
 button.red{color:var(--bad)}
 button:disabled{opacity:.35;cursor:not-allowed}
-main{max-width:1100px;margin:18px auto;padding:0 14px}
+main{max-width:1100px;width:100%;margin:18px auto;padding:0 14px;flex:1}
+body{display:flex;flex-direction:column;min-height:100vh}
+footer{text-align:center;padding:20px 12px;color:var(--mute);font-size:13px}
+.task{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:10px;background:var(--bg)}
+.task.fin span{text-decoration:line-through;color:var(--mute)}
+.chk{display:flex;gap:10px;align-items:center;margin:0;color:var(--ink);font-weight:600;font-size:15px}.chk input{width:20px;height:20px;margin:0}
+.meta{font-size:13px;color:var(--mute);margin-top:4px}
+.pr-high{color:var(--bad);font-weight:600}.pr-medium{color:var(--wa);font-weight:600}.pr-low{color:var(--mute);font-weight:600}
 .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:14px}
 .narrow{max-width:380px;margin:0 auto 14px}
 label{display:block;font-size:13px;color:var(--mute);margin-bottom:10px}
@@ -53,8 +60,9 @@ dialog{border:1px solid var(--line);border-radius:12px;background:var(--card);co
 </style>
 </head>
 <body>
-<header><h1>Attendance</h1><nav id="nav"></nav></header>
+<header><h1>Chittor Darpan</h1><nav id="nav"></nav></header>
 <main id="app"></main>
+<footer>Powered by India Darpan</footer>
 <dialog id="dlg"></dialog>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
@@ -76,13 +84,15 @@ const mins = s => { const [a, b] = s.split(":"); return +a * 60 + +b; };
 const hrs = r => { if (!r || !r.in_time || !r.out_time) return 0; let ms = new Date(r.out_time) - new Date(r.in_time); if (r.lunch_out && r.lunch_in) ms -= new Date(r.lunch_in) - new Date(r.lunch_out); return Math.max(ms, 0) / 36e5; };
 const hm = h => h ? Math.floor(h) + "h " + String(Math.round(h % 1 * 60)).padStart(2, "0") + "m" : "—";
 const inr = n => "₹" + Math.round(n).toLocaleString("en-IN");
-const LBL = {present:"Present", half_day:"Half day", leave:"Leave (paid)", absent:"Absent", holiday:"Holiday", off:"Weekly off", pending:"Abhi baaki", future:"", na:""};
+const LBL = {present:"Present", half_day:"Half day", leave:"Leave (paid)", absent:"Absent", holiday:"Holiday", off:"Weekly off", pending:"Not marked yet", future:"", na:""};
 const SH = {present:"P", half_day:"½", leave:"L", absent:"A", holiday:"H", off:"W", pending:"·", future:"", na:""};
 const V = {present:1, half_day:.5, leave:1, absent:0, holiday:1};
 
 let tab = "punch", admin = false, date = today(), month = today().slice(0, 7), msg = "", pun = null, pubEmps = null, tmo, eid, csv = [];
 let emps = [], S = {shift_start:"10:00", grace_min:15, full_hours:8, half_hours:4, weekly_off:[0], ot_mult:0}, hol = {}, rows = {};
-const isLate = r => r && r.in_time && mins(t24(r.in_time)) > mins(S.shift_start) + S.grace_min;
+const lateMin = r => { if (!r || !r.in_time) return 0; const m = mins(t24(r.in_time)) - mins(S.shift_start); return m > S.grace_min ? m : 0; };
+const lm = m => m >= 60 ? Math.floor(m / 60) + "h " + (m % 60) + "m" : m + " min";
+const isLate = r => lateMin(r) > 0;
 
 function dayInfo(e, day, r) {
   if (day < e.joined_on) return {k:"na", v:0, skip:1};
@@ -112,8 +122,8 @@ app.onchange = e => { const b = e.target.closest("[data-c]"); if (b && C[b.datas
 
 function nav() {
   const t = (k, l) => `<button data-t="${k}" class="${tab === k ? "on" : ""}">${l}</button>`;
-  $("nav").innerHTML = (admin ? t("att", "Attendance") + t("month", "Mahina & Salary") + t("staff", "Staff") + t("set", "Settings") : "") +
-    t("punch", "Attendance lagao") + (admin ? `<button id="lo">Logout</button>` : t("att", "Admin"));
+  $("nav").innerHTML = (admin ? t("att", "Attendance") + t("tasks", "Tasks") + t("month", "Monthly Report & Salary") + t("staff", "Staff") + t("set", "Settings") : "") +
+    t("punch", "Mark attendance") + (admin ? `<button id="lo">Logout</button>` : t("att", "Admin"));
 }
 $("nav").onclick = async e => {
   const b = e.target.closest("button"); if (!b) return;
@@ -125,7 +135,7 @@ async function render() {
   nav();
   if (tab === "punch") return tPunch();
   if (!admin) return tLogin();
-  return ({att:tAtt, month:tMonth, staff:tStaff, set:tSet})[tab]();
+  return ({att:tAtt, tasks:tTasks, month:tMonth, staff:tStaff, set:tSet})[tab]();
 }
 
 /* ---------- Employee punch screen ---------- */
@@ -139,28 +149,29 @@ async function tPunch() {
   clearTimeout(tmo);
   if (!pun) {
     app.innerHTML = hero + `<div class="card narrow">${pubEmps.length ? `
-      <label>Apna naam<select id="pe">${pubEmps.map(e => `<option value="${e.id}">${esc(e.name)}</option>`).join("")}</select></label>
+      <label>Your name<select id="pe">${pubEmps.map(e => `<option value="${e.id}">${esc(e.name)}</option>`).join("")}</select></label>
       <label>PIN<input id="pp" type="password" inputmode="numeric" maxlength="6" autocomplete="off"></label>
-      <button class="big go" data-a="plogin">Aage badho</button>` : `<p class="mute">Abhi koi employee add nahi hua.</p>`}
+      <button class="big go" data-a="plogin">Continue</button>` : `<p class="mute">No employees have been added yet.</p>`}
       <p class="msg">${esc(msg)}</p></div>`;
   } else {
     const r = pun.data.att || {}, st = r.status;
     const bt = (f, l, cls, ok) => r[f] ? `<button class="pb done" disabled>${l}<small>${tm(r[f])}</small></button>` : `<button class="pb ${cls}" data-a="punch" data-f="${f}" ${ok && !st || (st === "present" || st === "half_day") && ok ? "" : "disabled"}>${l}</button>`;
     const inside = r.in_time && !r.out_time;
-    app.innerHTML = hero + `<div class="card narrow"><h3>Namaste, ${esc(pun.data.name)}</h3>
-      ${st && !["present", "half_day"].includes(st) ? `<p class="mute">Aaj ka status: <b>${LBL[st]}</b></p>` : ""}
+    app.innerHTML = hero + `<div class="card narrow"><h3>Hello, ${esc(pun.data.name)}</h3>
+      ${st && !["present", "half_day"].includes(st) ? `<p class="mute">Today's status: <b>${LBL[st]}</b></p>` : ""}
       <div class="pgrid">${bt("in_time", "IN", "i", !r.in_time) + bt("lunch_out", "Lunch OUT", "l", inside && !r.lunch_out) +
         bt("lunch_in", "Lunch IN", "l", inside && r.lunch_out && !r.lunch_in) + bt("out_time", "OUT", "o", inside && !(r.lunch_out && !r.lunch_in))}</div>
-      ${isLate(r) ? `<p class="late">Late aaye (shift ${S.shift_start.slice(0, 5)})</p>` : ""}
-      ${r.out_time ? `<p>Aaj ke ghante: <b>${hm(hrs(r))}</b></p>` : ""}
-      <p class="msg">${esc(msg)}</p><button class="big" data-a="pexit">Done / Doosra employee</button></div>`;
+      ${isLate(r) ? `<p class="late">Late by ${lm(lateMin(r))} (shift starts at ${S.shift_start.slice(0, 5)})</p>` : ""}
+      ${r.out_time ? `<p>Hours today: <b>${hm(hrs(r))}</b></p>` : ""}
+      <p class="msg">${esc(msg)}</p><button class="big" data-a="pexit">Done / Switch employee</button></div>
+      <div class="card narrow"><h3>My tasks</h3>${taskList(pun.tasks || [])}</div>`;
     tmo = setTimeout(() => { pun = null; render(); }, 60000);
   }
 }
 A.plogin = async () => {
   const id = $("pe").value, pin = $("pp").value;
   const { data, error } = await sb.rpc("punch", {p_emp: id, p_pin: pin, p_action: "status"});
-  if (error || data.error) msg = (error && error.message) || data.error; else { msg = ""; pun = {id, pin, data}; }
+  if (error || data.error) msg = (error && error.message) || data.error; else { msg = ""; pun = {id, pin, data}; await loadTasks(); }
   render();
 };
 A.punch = async b => {
@@ -182,8 +193,8 @@ async function tLogin() {
 }
 A.login = async () => {
   const { error } = await sb.auth.signInWithPassword({email: $("em").value.trim(), password: $("pw").value});
-  if (error) { msg = "Login nahi hua: " + error.message + " [server: " + (HOST || "URL galat hai") + "]"; return render(); }
-  if ((await sb.rpc("is_admin")).data !== true) { await sb.auth.signOut(); msg = "Ye account admin nahi hai."; return render(); }
+  if (error) { msg = "Login failed: " + error.message + " [server: " + (HOST || "URL is invalid") + "]"; return render(); }
+  if ((await sb.rpc("is_admin")).data !== true) { await sb.auth.signOut(); msg = "This account is not an admin."; return render(); }
   admin = true; tab = "att"; msg = ""; render();
 };
 
@@ -203,14 +214,14 @@ async function tAtt() {
     if (cnt[i.k] !== undefined) cnt[i.k]++;
     if (isLate(r)) cnt.late++;
     if (r && r.in_time && !r.out_time && !(r.lunch_out && !r.lunch_in)) cnt.inside++;
-    return `<tr><td>${esc(e.name)}</td><td class="tag ${i.k}">${LBL[i.k]}${i.open && date !== today() ? " (OUT nahi)" : ""}${isLate(r) ? `<span class="late">Late</span>` : ""}</td>
+    return `<tr><td>${esc(e.name)}</td><td class="tag ${i.k}">${LBL[i.k]}${i.open && date !== today() ? " (no OUT)" : ""}${isLate(r) ? `<span class="late">Late by ${lm(lateMin(r))}</span>` : ""}</td>
       <td>${cell(e, r, "in_time", "IN")}</td><td>${cell(e, r, "lunch_out", "Lunch OUT")}</td><td>${cell(e, r, "lunch_in", "Lunch IN")}</td><td>${cell(e, r, "out_time", "OUT")}</td>
       <td>${hm(hrs(r))}</td><td class="mute">${esc(r && r.note || "")}</td><td><button data-a="edit" data-e="${e.id}">Edit</button></td></tr>`;
   }).join("");
   const chip = (l, n) => `<div class="chip">${l}<b>${n}</b></div>`;
   app.innerHTML = `<div class="card"><div class="bar"><label>Date<input type="date" id="d" data-c="date" value="${date}"></label></div>
-    <div class="chips">${chip("Present", cnt.present)}${chip("Half day", cnt.half_day)}${chip("Leave", cnt.leave)}${chip("Absent", cnt.absent)}${chip("Late", cnt.late)}${chip("Abhi andar", cnt.inside)}${date === today() ? chip("Abhi baaki", cnt.pending) : ""}</div>
-    ${list.length ? `<div class="wrap"><table><thead><tr><th>Naam</th><th>Status</th><th>IN</th><th>Lunch OUT</th><th>Lunch IN</th><th>OUT</th><th>Ghante</th><th>Note</th><th></th></tr></thead><tbody>${trs}</tbody></table></div>` : `<p class="mute">Staff tab me employee add karo.</p>`}
+    <div class="chips">${chip("Present", cnt.present)}${chip("Half day", cnt.half_day)}${chip("Leave", cnt.leave)}${chip("Absent", cnt.absent)}${chip("Late", cnt.late)}${chip("Inside now", cnt.inside)}${date === today() ? chip("Not marked yet", cnt.pending) : ""}</div>
+    ${list.length ? `<div class="wrap"><table><thead><tr><th>Name</th><th>Status</th><th>IN</th><th>Lunch OUT</th><th>Lunch IN</th><th>OUT</th><th>Hours</th><th>Note</th><th></th></tr></thead><tbody>${trs}</tbody></table></div>` : `<p class="mute">Add employees in the Staff tab.</p>`}
     <p class="msg">${esc(msg)}</p></div>`;
 }
 C.date = b => { date = b.value || today(); tAtt(); };
@@ -222,10 +233,10 @@ A.edit = b => {
   const e = emps.find(x => x.id === b.dataset.e), r = rows[e.id] || {}; eid = e.id;
   const ti = (id, l, f) => `<label>${l}<input type="time" id="${id}" value="${t24(r[f])}"></label>`;
   dlg.innerHTML = `<h3>${esc(e.name)} · ${date}</h3>
-    <label>Status<select id="es"><option value="">Auto (time se)</option>${Object.keys(V).map(k => `<option value="${k}" ${r.status === k ? "selected" : ""}>${LBL[k]}</option>`).join("")}</select></label>
+    <label>Status<select id="es"><option value="">Auto (from times)</option>${Object.keys(V).map(k => `<option value="${k}" ${r.status === k ? "selected" : ""}>${LBL[k]}</option>`).join("")}</select></label>
     <div class="g2">${ti("e1", "IN", "in_time")}${ti("e4", "OUT", "out_time")}${ti("e2", "Lunch OUT", "lunch_out")}${ti("e3", "Lunch IN", "lunch_in")}</div>
     <label>Note<input id="en" value="${esc(r.note || "")}"></label>
-    <div class="bar"><button class="go" data-a="dsave">Save</button><button data-a="dclose">Band karo</button></div>`;
+    <div class="bar"><button class="go" data-a="dsave">Save</button><button data-a="dclose">Close</button></div>`;
   dlg.showModal();
 };
 A.dclose = () => dlg.close();
@@ -243,30 +254,30 @@ async function tMonth() {
   const [y, m] = month.split("-").map(Number), dim = new Date(y, m, 0).getDate(), p = n => String(n).padStart(2, "0");
   const [a, adj] = await Promise.all([sb.from("attendance").select("*").gte("day", `${month}-01`).lte("day", `${month}-${p(dim)}`), sb.from("adjustments").select("*").eq("month", month)]);
   const by = {}, aj = {}; (a.data || []).forEach(r => by[r.employee_id + r.day] = r); (adj.data || []).forEach(x => aj[x.employee_id] = x);
-  let head = "", grid = "", sal = "", tot = 0; csv = [["Naam", "Present", "Half day", "Leave", "Absent", "Late", "Payable din", "Gross", "Overtime", "Bonus", "Deduction", "Net"]];
+  let head = "", grid = "", sal = "", tot = 0; csv = [["Name", "Present", "Half day", "Leave", "Absent", "Late count", "Late minutes", "Payable days", "Gross", "Overtime", "Bonus", "Deduction", "Net"]];
   for (let d = 1; d <= dim; d++) head += `<th style="text-align:center;padding:8px 4px">${d}</th>`;
   emps.filter(e => e.active).forEach(e => {
-    let cells = "", paid = 0, ot = 0, late = 0; const c = {present:0, half_day:0, leave:0, absent:0};
+    let cells = "", paid = 0, ot = 0, late = 0, lateMins = 0; const c = {present:0, half_day:0, leave:0, absent:0};
     for (let d = 1; d <= dim; d++) {
       const day = `${month}-${p(d)}`, r = by[e.id + day], i = dayInfo(e, day, r);
       cells += `<td class="g ${i.k}" title="${LBL[i.k]}">${SH[i.k]}</td>`;
       if (!i.skip) paid += i.v;
       if (c[i.k] !== undefined) c[i.k]++;
-      if (isLate(r)) late++;
+      if (isLate(r)) { late++; lateMins += lateMin(r); }
       if (r && r.out_time && S.ot_mult > 0) ot += Math.max(hrs(r) - S.full_hours, 0);
     }
     const perDay = e.monthly_salary / dim, gross = Math.round(perDay * paid), otPay = Math.round(ot * (perDay / S.full_hours) * S.ot_mult);
     const x = aj[e.id] || {}, net = gross + otPay + (+x.bonus || 0) - (+x.deduction || 0); tot += net;
     grid += `<tr><td>${esc(e.name)}</td>${cells}</tr>`;
-    sal += `<tr data-e="${e.id}"><td>${esc(e.name)}</td><td>${c.present}</td><td>${c.half_day}</td><td>${c.leave}</td><td>${c.absent}</td><td>${late}</td><td>${paid}</td><td>${inr(gross)}</td><td>${S.ot_mult > 0 ? inr(otPay) + ` <span class="mute">(${hm(ot)})</span>` : "—"}</td>
+    sal += `<tr data-e="${e.id}"><td>${esc(e.name)}</td><td>${c.present}</td><td>${c.half_day}</td><td>${c.leave}</td><td>${c.absent}</td><td>${late}${late ? ` <span class="mute">(${lm(lateMins)})</span>` : ""}</td><td>${paid}</td><td>${inr(gross)}</td><td>${S.ot_mult > 0 ? inr(otPay) + ` <span class="mute">(${hm(ot)})</span>` : "—"}</td>
       <td><input type="number" min="0" data-c="adj" data-k="bonus" value="${+x.bonus || 0}" style="width:90px"></td><td><input type="number" min="0" data-c="adj" data-k="deduction" value="${+x.deduction || 0}" style="width:90px"></td><td><b>${inr(net)}</b></td></tr>`;
-    csv.push([e.name, c.present, c.half_day, c.leave, c.absent, late, paid, gross, otPay, +x.bonus || 0, +x.deduction || 0, net]);
+    csv.push([e.name, c.present, c.half_day, c.leave, c.absent, late, lateMins, paid, gross, otPay, +x.bonus || 0, +x.deduction || 0, net]);
   });
-  app.innerHTML = `<div class="card"><div class="bar"><label>Mahina<input type="month" data-c="month" value="${month}"></label><button data-a="csv">CSV download</button></div>
-    <div class="wrap"><table><thead><tr><th>Naam</th>${head}</tr></thead><tbody>${grid}</tbody></table></div>
+  app.innerHTML = `<div class="card"><div class="bar"><label>Month<input type="month" data-c="month" value="${month}"></label><button data-a="csv">Download CSV</button></div>
+    <div class="wrap"><table><thead><tr><th>Name</th>${head}</tr></thead><tbody>${grid}</tbody></table></div>
     <p class="mute">P Present · ½ Half day · L Leave · A Absent · H Holiday · W Weekly off</p></div>
-    <div class="card"><h3>Salary</h3><div class="wrap"><table><thead><tr><th>Naam</th><th>P</th><th>½</th><th>L</th><th>A</th><th>Late</th><th>Payable din</th><th>Gross</th><th>Overtime</th><th>Bonus (₹)</th><th>Advance/Katauti (₹)</th><th>Net</th></tr></thead><tbody>${sal}</tbody></table></div>
-    <p>Total payable: <b>${inr(tot)}</b></p><p class="mute">Gross = monthly salary ÷ ${dim} × payable din. Aaj tak ke din hi gine jaate hain, aur joining se pehle ke din nahi.</p></div>`;
+    <div class="card"><h3>Salary</h3><div class="wrap"><table><thead><tr><th>Name</th><th>P</th><th>½</th><th>L</th><th>A</th><th>Late (count / total)</th><th>Payable days</th><th>Gross</th><th>Overtime</th><th>Bonus (₹)</th><th>Advance / Deduction (₹)</th><th>Net</th></tr></thead><tbody>${sal}</tbody></table></div>
+    <p>Total payable: <b>${inr(tot)}</b></p><p class="mute">Gross = monthly salary ÷ ${dim} × payable days. Only days up to today are counted, and days before the joining date are not.</p></div>`;
 }
 C.month = b => { month = b.value || month; tMonth(); };
 C.adj = async b => {
@@ -282,53 +293,107 @@ A.csv = () => {
 /* ---------- Staff ---------- */
 async function tStaff() {
   await base();
-  app.innerHTML = `<div class="card"><h3>Naya employee</h3><div class="bar">
-    <label>Naam<input id="nn"></label><label>Monthly salary (₹)<input id="ns" type="number" min="0"></label>
-    <label>PIN (4-6 number)<input id="np" inputmode="numeric" maxlength="6"></label><label>Joining date<input id="nj" type="date" value="${today()}"></label>
+  app.innerHTML = `<div class="card"><h3>Add employee</h3><div class="bar">
+    <label>Name<input id="nn"></label><label>Monthly salary (₹)<input id="ns" type="number" min="0"></label>
+    <label>PIN (4-6 digits)<input id="np" inputmode="numeric" maxlength="6"></label><label>Joining date<input id="nj" type="date" value="${today()}"></label>
     <button class="go" data-a="addEmp">Add</button></div><p class="msg">${esc(msg)}</p></div>
-    <div class="card"><div class="wrap"><table><thead><tr><th>Naam</th><th>Monthly salary (₹)</th><th>Joining</th><th>Active</th><th></th></tr></thead><tbody>
+    <div class="card"><div class="wrap"><table><thead><tr><th>Name</th><th>Monthly salary (₹)</th><th>Joining</th><th>Active</th><th></th></tr></thead><tbody>
     ${emps.map(e => `<tr data-e="${e.id}"><td>${esc(e.name)}</td><td><input type="number" min="0" data-c="sal" value="${e.monthly_salary}" style="width:120px"></td><td>${e.joined_on}</td>
     <td><input type="checkbox" data-c="act" ${e.active ? "checked" : ""} style="width:auto"></td>
-    <td><button data-a="pin" data-e="${e.id}">PIN badlo</button> <button class="red" data-a="del" data-e="${e.id}">Delete</button></td></tr>`).join("") || `<tr><td class="mute">Abhi koi employee nahi.</td></tr>`}</tbody></table></div></div>`;
+    <td><button data-a="pin" data-e="${e.id}">Change PIN</button> <button class="red" data-a="del" data-e="${e.id}">Delete</button></td></tr>`).join("") || `<tr><td class="mute">No employees yet.</td></tr>`}</tbody></table></div></div>`;
 }
 A.addEmp = async () => {
   const name = $("nn").value.trim(), pin = $("np").value.trim();
-  if (!name) { msg = "Naam likho."; return tStaff(); }
-  if (!/^\d{4,6}$/.test(pin)) { msg = "PIN 4 se 6 number ka hona chahiye."; return tStaff(); }
+  if (!name) { msg = "Enter a name."; return tStaff(); }
+  if (!/^\d{4,6}$/.test(pin)) { msg = "PIN must be 4 to 6 digits."; return tStaff(); }
   const { data, error } = await sb.from("employees").insert({name, monthly_salary: +$("ns").value || 0, joined_on: $("nj").value || today()}).select().single();
   if (error) { msg = error.message; return tStaff(); }
   const r = await sb.rpc("admin_set_pin", {p_emp: data.id, p_pin: pin});
   msg = r.error ? r.error.message : ""; tStaff();
 };
 A.pin = async b => {
-  const pin = prompt("Naya PIN (4-6 number):"); if (!pin) return;
+  const pin = prompt("New PIN (4-6 digits):"); if (!pin) return;
   const r = await sb.rpc("admin_set_pin", {p_emp: b.dataset.e, p_pin: pin.trim()});
   msg = r.error ? r.error.message : ""; tStaff();
 };
-A.del = async b => { if (!confirm("Employee aur uska poora attendance record delete ho jayega. Pakka?")) return; await sb.from("employees").delete().eq("id", b.dataset.e); tStaff(); };
+A.del = async b => { if (!confirm("This deletes the employee and all their attendance and tasks. Are you sure?")) return; await sb.from("employees").delete().eq("id", b.dataset.e); tStaff(); };
 C.sal = async b => { await sb.from("employees").update({monthly_salary: +b.value || 0}).eq("id", b.closest("tr").dataset.e); };
 C.act = async b => { await sb.from("employees").update({active: b.checked}).eq("id", b.closest("tr").dataset.e); };
 
 /* ---------- Settings + holidays ---------- */
 async function tSet() {
-  const hl = await base(), dn = ["Ravi", "Som", "Mangal", "Budh", "Guru", "Shukra", "Shani"];
+  const hl = await base(), dn = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
   app.innerHTML = `<div class="card"><h3>Rules</h3><div class="bar">
     <label>Shift start<input id="s1" type="time" value="${S.shift_start.slice(0, 5)}"></label><label>Late grace (min)<input id="s2" type="number" min="0" value="${S.grace_min}"></label>
-    <label>Full day ghante<input id="s3" type="number" step="0.5" value="${S.full_hours}"></label><label>Half day ghante<input id="s4" type="number" step="0.5" value="${S.half_hours}"></label>
-    <label>Overtime rate (0 = band)<input id="s5" type="number" step="0.25" min="0" value="${S.ot_mult}"></label></div>
+    <label>Full-day hours<input id="s3" type="number" step="0.5" value="${S.full_hours}"></label><label>Half-day hours<input id="s4" type="number" step="0.5" value="${S.half_hours}"></label>
+    <label>Overtime rate (0 = off)<input id="s5" type="number" step="0.25" min="0" value="${S.ot_mult}"></label></div>
     <label>Weekly off</label><div class="days">${dn.map((n, i) => `<label><input type="checkbox" name="wo" value="${i}" ${S.weekly_off.includes(i) ? "checked" : ""}>${n}</label>`).join("")}</div>
-    <p class="mute">Time se auto status: Full day ghante ya zyada = Present, Half day ghante se zyada = Half day, usse kam = Absent (lunch ka time hata kar). Admin kabhi bhi Edit se badal sakta hai.</p>
+    <p class="mute">Auto status from times (lunch time excluded): at least the full-day hours = Present, at least the half-day hours = Half day, less than that = Absent. You can always override it with Edit. Late is measured from the shift start once the grace period is exceeded.</p>
     <button class="go" data-a="saveS">Save rules</button> <span class="msg">${esc(msg)}</span></div>
-    <div class="card"><h3>Holidays</h3><div class="bar"><label>Date<input id="hd" type="date"></label><label>Naam<input id="hn" placeholder="Diwali"></label><button class="go" data-a="addH">Add</button></div>
-    ${hl.map(h => `<div style="padding:5px 0">${h.day} · ${esc(h.name)} <button class="red" data-a="delH" data-d="${h.day}">Hatao</button></div>`).join("") || `<p class="mute">Koi holiday nahi.</p>`}</div>`;
+    <div class="card"><h3>Holidays</h3><div class="bar"><label>Date<input id="hd" type="date"></label><label>Name<input id="hn" placeholder="Diwali"></label><button class="go" data-a="addH">Add</button></div>
+    ${hl.map(h => `<div style="padding:5px 0">${h.day} · ${esc(h.name)} <button class="red" data-a="delH" data-d="${h.day}">Remove</button></div>`).join("") || `<p class="mute">No holidays yet.</p>`}</div>`;
 }
 A.saveS = async () => {
   const wo = [...document.querySelectorAll("[name=wo]:checked")].map(x => +x.value);
   const { error } = await sb.from("settings").update({shift_start: $("s1").value || "10:00", grace_min: +$("s2").value || 0, full_hours: +$("s3").value || 8, half_hours: +$("s4").value || 4, ot_mult: +$("s5").value || 0, weekly_off: wo}).eq("id", 1);
-  msg = error ? error.message : "Save ho gaya"; tSet();
+  msg = error ? error.message : "Saved"; tSet();
 };
 A.addH = async () => { if (!$("hd").value) return; await sb.from("holidays").upsert({day: $("hd").value, name: $("hn").value.trim() || "Holiday"}); tSet(); };
 A.delH = async b => { await sb.from("holidays").delete().eq("day", b.dataset.d); tSet(); };
+
+/* ---------- Tasks ---------- */
+const cap = s => s.charAt(0).toUpperCase() + s.slice(1).replace("_", " ");
+const overdue = t => t.status !== "completed" && t.due_date && t.due_date < today();
+async function loadTasks() { const r = await sb.rpc("my_tasks", {p_emp: pun.id, p_pin: pun.pin}); pun.tasks = (r.data && r.data.tasks) || []; }
+function taskList(list) {
+  if (!list.length) return `<p class="mute">No tasks assigned.</p>`;
+  return list.map(t => `<div class="task ${t.status === "completed" ? "fin" : ""}"><label class="chk"><input type="checkbox" data-a="ttick" data-id="${t.id}" ${t.status === "completed" ? "checked" : ""}><span>${esc(t.title)}</span></label>
+    ${t.description ? `<div class="mute">${esc(t.description)}</div>` : ""}
+    <div class="meta"><span class="pr-${t.priority}">${cap(t.priority)}</span> · ${t.due_date ? "Due " + t.due_date : "No due date"}${overdue(t) ? ` · <b class="absent">Overdue</b>` : ""} · ${cap(t.status)}
+    ${t.status === "pending" ? ` <button class="mini" data-a="tstart" data-id="${t.id}">Start</button>` : ""}</div></div>`).join("");
+}
+async function setTask(id, st) {
+  const r = await sb.rpc("set_task_status", {p_emp: pun.id, p_pin: pun.pin, p_task: id, p_status: st});
+  msg = r.data && r.data.error ? r.data.error : ""; await loadTasks(); render();
+}
+A.ttick = b => setTask(b.dataset.id, b.checked ? "completed" : "pending");
+A.tstart = b => setTask(b.dataset.id, "in_progress");
+
+let tf = {emp: "", st: ""};
+async function tTasks() {
+  await base();
+  const all = (await sb.from("tasks").select("*").order("due_date", {nullsFirst: false}).order("created_at", {ascending: false})).data || [];
+  const nm = id => (emps.find(e => e.id === id) || {}).name || "—", act = emps.filter(e => e.active);
+  const cnt = {pending: 0, in_progress: 0, completed: 0, overdue: 0};
+  all.forEach(t => { cnt[t.status]++; if (overdue(t)) cnt.overdue++; });
+  const list = all.filter(t => (!tf.emp || t.employee_id === tf.emp) && (!tf.st || (tf.st === "overdue" ? overdue(t) : t.status === tf.st)));
+  const chip = (l, n) => `<div class="chip">${l}<b>${n}</b></div>`, so = (v, l) => `<option value="${v}" ${tf.st === v ? "selected" : ""}>${l}</option>`;
+  const fin = t => t.completed_at ? new Date(t.completed_at).toLocaleString("en-IN", {timeZone: TZ, day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12: true}) : "—";
+  app.innerHTML = `<div class="card"><h3>Assign task</h3><div class="bar">
+    <label>Assign to<select id="tt"><option value="all">All staff</option>${act.map(e => `<option value="${e.id}">${esc(e.name)}</option>`).join("")}</select></label>
+    <label>Task<input id="tn" placeholder="Task title"></label><label>Details (optional)<input id="td"></label>
+    <label>Due date<input type="date" id="tdue" value="${today()}"></label>
+    <label>Priority<select id="tp"><option value="medium">Medium</option><option value="high">High</option><option value="low">Low</option></select></label>
+    <button class="go" data-a="addTask">Add task</button></div><p class="msg">${esc(msg)}</p></div>
+    <div class="card"><div class="chips">${chip("Pending", cnt.pending)}${chip("In progress", cnt.in_progress)}${chip("Completed", cnt.completed)}${chip("Overdue", cnt.overdue)}</div>
+    <div class="bar"><label>Staff<select data-c="tfe"><option value="">Everyone</option>${emps.map(e => `<option value="${e.id}" ${tf.emp === e.id ? "selected" : ""}>${esc(e.name)}</option>`).join("")}</select></label>
+    <label>Status<select data-c="tfs">${so("", "All")}${so("pending", "Pending")}${so("in_progress", "In progress")}${so("completed", "Completed")}${so("overdue", "Overdue")}</select></label></div>
+    ${list.length ? `<div class="wrap"><table><thead><tr><th>Task</th><th>Assigned to</th><th>Due</th><th>Priority</th><th>Status</th><th>Completed on</th><th></th></tr></thead><tbody>${list.map(t => `<tr data-id="${t.id}">
+      <td>${esc(t.title)}<div class="mute">${esc(t.description || "")}</div></td><td>${esc(nm(t.employee_id))}</td><td class="${overdue(t) ? "absent" : ""}">${t.due_date || "—"}${overdue(t) ? " (overdue)" : ""}</td>
+      <td class="pr-${t.priority}">${cap(t.priority)}</td><td><select data-c="tst">${["pending", "in_progress", "completed"].map(s => `<option value="${s}" ${t.status === s ? "selected" : ""}>${cap(s)}</option>`).join("")}</select></td>
+      <td>${fin(t)}</td><td><button class="red" data-a="tdel" data-id="${t.id}">Delete</button></td></tr>`).join("")}</tbody></table></div>` : `<p class="mute">No tasks found.</p>`}</div>`;
+}
+C.tfe = b => { tf.emp = b.value; tTasks(); };
+C.tfs = b => { tf.st = b.value; tTasks(); };
+C.tst = async b => { await sb.from("tasks").update({status: b.value, completed_at: b.value === "completed" ? new Date().toISOString() : null}).eq("id", b.closest("tr").dataset.id); tTasks(); };
+A.addTask = async () => {
+  const title = $("tn").value.trim(); if (!title) { msg = "Enter a task title."; return tTasks(); }
+  const who = $("tt").value, ids = who === "all" ? emps.filter(e => e.active).map(e => e.id) : [who];
+  if (!ids.length) { msg = "Add staff first."; return tTasks(); }
+  const { error } = await sb.from("tasks").insert(ids.map(id => ({employee_id: id, title, description: $("td").value.trim() || null, due_date: $("tdue").value || null, priority: $("tp").value})));
+  msg = error ? error.message : ""; tTasks();
+};
+A.tdel = async b => { if (!confirm("Delete this task?")) return; await sb.from("tasks").delete().eq("id", b.dataset.id); tTasks(); };
 
 render();
 </script>
